@@ -15,12 +15,14 @@ mod switch;
 mod task;
 
 use crate::config::MAX_APP_NUM;
+use crate::config::MAX_TCB_SYSCALL_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use lazy_static::*;
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
 
+pub use task::{TaskControlBlock, TaskStatus};
 pub use context::TaskContext;
 
 /// The task manager, where all the tasks are managed.
@@ -32,7 +34,7 @@ pub use context::TaskContext;
 /// Most of `TaskManager` are hidden behind the field `inner`, to defer
 /// borrowing checks to runtime. You can see examples on how to use `inner` in
 /// existing functions on `TaskManager`.
-pub struct TaskManager {
+struct TaskManager {
     /// total number of tasks
     num_app: usize,
     /// use inner value to get mutable access
@@ -40,7 +42,7 @@ pub struct TaskManager {
 }
 
 /// Inner of Task Manager
-pub struct TaskManagerInner {
+struct TaskManagerInner {
     /// task list
     tasks: [TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
@@ -49,11 +51,13 @@ pub struct TaskManagerInner {
 
 lazy_static! {
     /// Global variable: TASK_MANAGER
-    pub static ref TASK_MANAGER: TaskManager = {
+    static ref TASK_MANAGER: TaskManager = {
         let num_app = get_num_app();
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_times: [0u32; MAX_TCB_SYSCALL_NUM],
+            time: usize::MAX,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -121,7 +125,11 @@ impl TaskManager {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
-            inner.tasks[next].task_status = TaskStatus::Running;
+            let tcb = &mut inner.tasks[next];
+            tcb.task_status = TaskStatus::Running;
+            if tcb.time == usize::MAX {
+                tcb.time = get_time_ms();
+            }
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
@@ -168,4 +176,20 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// Get Current TCB
+pub fn get_current_tcb() -> TaskControlBlock {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    inner.tasks[current]
+}
+
+use crate::syscall::SYSCALL_TO_TCB;
+/// Record count of each syscall executed on different task
+pub fn record_syscall(syscall_id: usize) {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    let tcb = &mut inner.tasks[current];
+    tcb.syscall_times[SYSCALL_TO_TCB[syscall_id]] += 1;
 }
