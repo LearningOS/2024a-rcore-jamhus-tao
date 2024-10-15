@@ -40,22 +40,25 @@ pub const TCB_TO_SYSCALL: [usize; MAX_TCB_SYSCALL_NUM] = {
     ret
 };
 
-mod sys_write;
-mod sys_exit;
-mod sys_yield;
-mod sys_get_time;
-mod sys_task_info;
+mod fs;
+mod process;
+
+// mod sys_write;
+// mod sys_exit;
+// mod sys_yield;
+// mod sys_get_time;
+// mod sys_task_info;
 use crate::task::record_syscall;
 
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
     record_syscall(syscall_id);
     match syscall_id {
-        SYSCALL_WRITE => sys_write::process(args[0], args[1] as *const u8, args[2]),
-        SYSCALL_EXIT => sys_exit::process(args[0] as i32),
-        SYSCALL_YIELD => sys_yield::process(),
-        SYSCALL_GET_TIME => sys_get_time::process(args[0] as *mut sys_get_time::TimeVal, args[1]),
-        SYSCALL_TASK_INFO => sys_task_info::process(args[0] as *mut sys_task_info::TaskInfo),
+        SYSCALL_WRITE => fs::sys_write::process(args[0], args[1] as *const u8, args[2]),
+        SYSCALL_EXIT => process::sys_exit::process(args[0] as i32),
+        SYSCALL_YIELD => process::sys_yield::process(),
+        SYSCALL_GET_TIME => process::sys_get_time::process(args[0] as *mut process::sys_get_time::TimeVal, args[1]),
+        SYSCALL_TASK_INFO => process::sys_task_info::process(args[0] as *mut process::sys_task_info::TaskInfo),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }
