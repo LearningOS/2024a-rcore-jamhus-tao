@@ -1,9 +1,6 @@
 //! Process management syscalls
 use crate::{
-    config::MAX_SYSCALL_NUM,
-    task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
-    },
+    config::MAX_SYSCALL_NUM, mm::translated_byte_buffer, task::*
 };
 
 #[repr(C)]
@@ -43,7 +40,26 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    let us = crate::timer::get_time_us();
+    let ts = &TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    } as *const _ as *const u8;
+    let size_ts = core::mem::size_of::<TimeVal>();
+    let v = translated_byte_buffer(current_user_token(), _ts as *const u8, size_ts);
+    let mut i = 0;
+    for buffer in v {
+        for byte in buffer {
+            if i == size_ts {
+                break;
+            }
+            unsafe {
+                *byte = *ts.add(i);
+                i += 1;
+            }
+        }
+    }
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
