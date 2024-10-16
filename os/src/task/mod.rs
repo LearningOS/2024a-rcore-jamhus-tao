@@ -15,7 +15,6 @@ mod switch;
 mod task;
 
 use crate::config::MAX_APP_NUM;
-use crate::config::MAX_TCB_SYSCALL_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use crate::timer::get_time_ms;
@@ -56,7 +55,6 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
-            syscall_times: [0u32; MAX_TCB_SYSCALL_NUM],
             time: usize::MAX,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
@@ -178,18 +176,14 @@ pub fn exit_current_and_run_next() {
     run_next_task();
 }
 
+/// Get Current App Id
+pub fn get_current_app_id() -> usize {
+    TASK_MANAGER.inner.exclusive_access().current_task
+}
+
 /// Get Current TCB
 pub fn get_current_tcb() -> TaskControlBlock {
     let inner = TASK_MANAGER.inner.exclusive_access();
     let current = inner.current_task;
     inner.tasks[current]
-}
-
-use crate::syscall::SYSCALL_TO_TCB;
-/// Record count of each syscall executed on different task
-pub fn record_syscall(syscall_id: usize) {
-    let mut inner = TASK_MANAGER.inner.exclusive_access();
-    let current = inner.current_task;
-    let tcb = &mut inner.tasks[current];
-    tcb.syscall_times[SYSCALL_TO_TCB[syscall_id]] += 1;
 }

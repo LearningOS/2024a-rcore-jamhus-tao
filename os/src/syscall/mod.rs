@@ -16,39 +16,20 @@ const SYSCALL_YIELD: usize = 124;
 const SYSCALL_GET_TIME: usize = 169;
 const SYSCALL_TASK_INFO: usize = 410;
 
-use crate::config::MAX_SYSCALL_NUM;
-/// mapping from SYSCALL to TCB_SYSCALL
-pub const SYSCALL_TO_TCB: [usize; MAX_SYSCALL_NUM] = {
-    let mut ret = [0; MAX_SYSCALL_NUM];
-    ret[SYSCALL_WRITE] = 0;
-    ret[SYSCALL_EXIT] = 1;
-    ret[SYSCALL_YIELD] = 2;
-    ret[SYSCALL_GET_TIME] = 3;
-    ret[SYSCALL_TASK_INFO] = 4;
-    ret
-};
-
-use crate::config::MAX_TCB_SYSCALL_NUM;
-/// mapping from TCB_SYSCALL to SYSCALL
-pub const TCB_TO_SYSCALL: [usize; MAX_TCB_SYSCALL_NUM] = {
-    let mut ret = [0; MAX_TCB_SYSCALL_NUM];
-    ret[0] = SYSCALL_WRITE;
-    ret[1] = SYSCALL_EXIT;
-    ret[2] = SYSCALL_YIELD;
-    ret[3] = SYSCALL_GET_TIME;
-    ret[4] = SYSCALL_TASK_INFO;
-    ret
-};
-
 mod fs;
 mod process;
 
-// mod sys_write;
-// mod sys_exit;
-// mod sys_yield;
-// mod sys_get_time;
-// mod sys_task_info;
-use crate::task::record_syscall;
+use crate::config::MAX_APP_NUM;
+use crate::config::MAX_SYSCALL_NUM;
+/// to record syscall times for each app
+pub static mut SYSCALL_TIMES: [[u32; MAX_SYSCALL_NUM]; MAX_APP_NUM]
+        = [[0; MAX_SYSCALL_NUM]; MAX_APP_NUM];
+
+fn record_syscall(syscall_id: usize) {
+    unsafe {
+        SYSCALL_TIMES[crate::task::get_current_app_id()][syscall_id] += 1;
+    }
+}
 
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {

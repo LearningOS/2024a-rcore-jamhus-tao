@@ -48,8 +48,9 @@ pub mod sys_get_time {
 
 pub mod sys_task_info {
     use crate::config::MAX_SYSCALL_NUM;
-    use crate::syscall::TCB_TO_SYSCALL;
+    use crate::syscall::SYSCALL_TIMES;
     use crate::task::TaskStatus;
+    use crate::task::get_current_app_id;
     use crate::task::get_current_tcb;
     use crate::timer::get_time_ms;
 
@@ -69,9 +70,7 @@ pub mod sys_task_info {
         let tcb = get_current_tcb();
         unsafe {
             (*_ti).status = tcb.task_status;
-            for (i, x) in tcb.syscall_times.iter().enumerate() {
-                (*_ti).syscall_times[TCB_TO_SYSCALL[i]] = *x;
-            }
+            (*_ti).syscall_times = SYSCALL_TIMES[get_current_app_id()];
             // (*_ti).syscall_times = tcb.syscall_times;
             (*_ti).time = if tcb.time == usize::MAX { 0 } else { get_time_ms() - tcb.time };
         }
