@@ -1,6 +1,7 @@
 //! Process management syscalls
+
 use crate::{
-    config::MAX_SYSCALL_NUM, mm::translated_byte_buffer, task::*
+    config::MAX_SYSCALL_NUM, mm::translated_byte_buffer, syscall::STATISITC_SYSCALL_TIMES, task::*, timer::get_time_ms
 };
 
 #[repr(C)]
@@ -35,26 +36,18 @@ pub fn sys_yield() -> isize {
     0
 }
 
-/// YOUR JOB: get time with second and microsecond
-/// HINT: You might reimplement it with virtual memory management.
-/// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!("kernel: sys_get_time");
-    let us = crate::timer::get_time_us();
-    let ts = &TimeVal {
-        sec: us / 1_000_000,
-        usec: us % 1_000_000,
-    } as *const _ as *const u8;
-    let size_ts = core::mem::size_of::<TimeVal>();
-    let v = translated_byte_buffer(current_user_token(), _ts as *const u8, size_ts);
+fn copy_in_va<T>(data: T, addr: *mut T) -> isize {
+    let size = core::mem::size_of::<T>();
+    let data = &data as *const _ as *const u8;
+    let v = translated_byte_buffer(current_user_token(), addr as *const u8, size);
     let mut i = 0;
     for buffer in v {
         for byte in buffer {
-            if i == size_ts {
+            if i == size {
                 break;
             }
             unsafe {
-                *byte = *ts.add(i);
+                *byte = *data.add(i);
                 i += 1;
             }
         }
@@ -62,25 +55,62 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
+/// YOUR JOB: get time with second and microsecond
+/// HINT: You might reimplement it with virtual memory management.
+/// HINT: What if [`TimeVal`] is splitted by two pages ?
+pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+    trace!("kernel: sys_get_time");
+    let us = crate::timer::get_time_us();
+    copy_in_va(TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    }, _ts);
+    0
+}
+
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
-    trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_task_info");
+    let current = get_current_app_id();
+    let stcb = get_current_tcb();
+    copy_in_va(TaskInfo {
+        status: stcb.task_status,
+        syscall_times: STATISITC_SYSCALL_TIMES.exclusive_access()[current],
+        time: if stcb.start_time == usize::MAX { 0 } else { get_time_ms() - stcb.start_time },
+    }, _ti);
+    0
 }
 
+use crate::mm::MapPermission;
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    // _port: 0xwr
+    // perm: 0uxwr0
+    trace!("kernel: sys_mmap");
+    if _port & !0x7 != 0 {
+        -1
+    } else if _port & 0x7 == 0 {
+        -1
+    } else if _start & crate::config::PAGE_SIZE - 1 != 0 {
+        -1
+    } else {
+        let perm = MapPermission::from_bits((_port << 1) as u8).unwrap() | MapPermission::U;
+        current_app_mmap(_start.into(), (_start + _len).into(), perm)
+    }
 }
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_munmap");
+    if _start & crate::config::PAGE_SIZE - 1 != 0 {
+        -1
+    } else {
+        current_app_munmap(crate::mm::VirtAddr(_start).floor(), crate::mm::VirtAddr(_start + _len).ceil())
+    }
 }
+
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
     trace!("kernel: sys_sbrk");

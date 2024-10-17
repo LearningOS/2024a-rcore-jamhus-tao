@@ -16,10 +16,12 @@ mod task;
 
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time_ms;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
+use task::TaskControlBlockReport;
 pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
@@ -139,7 +141,11 @@ impl TaskManager {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
-            inner.tasks[next].task_status = TaskStatus::Running;
+            let tcb = &mut inner.tasks[next];
+            tcb.task_status = TaskStatus::Running;
+            if tcb.start_time == usize::MAX {
+                tcb.start_time = get_time_ms();
+            }
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
             let next_task_cx_ptr = &inner.tasks[next].task_cx as *const TaskContext;
@@ -201,4 +207,36 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Get current app id
+pub fn get_current_app_id() -> usize {
+    TASK_MANAGER.inner.exclusive_access().current_task
+}
+
+/// Get current TCB
+pub fn get_current_tcb() -> TaskControlBlockReport {
+    let inner = &TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    let tcb = &inner.tasks[current];
+    TaskControlBlockReport{
+        task_status: tcb.task_status,
+        start_time: tcb.start_time,
+    }
+}
+
+use crate::mm::*;
+
+/// for mmap syscall
+pub fn current_app_mmap(start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) -> isize {
+    let inner = &mut TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    inner.tasks[current].memory_set.mmap(start_va, end_va, permission, current)
+}
+
+/// for munmap syscall
+pub fn current_app_munmap(start: VirtPageNum, end: VirtPageNum) -> isize {
+    let inner = &mut TASK_MANAGER.inner.exclusive_access();
+    let current = inner.current_task;
+    inner.tasks[current].memory_set.munmap(start, end, current)
 }

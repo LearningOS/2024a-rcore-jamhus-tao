@@ -6,6 +6,13 @@ use crate::mm::{
 };
 use crate::trap::{trap_handler, TrapContext};
 
+/// Simple TCB
+#[derive(Clone, Copy)]
+pub struct TaskControlBlockReport {
+    pub task_status: TaskStatus,
+    pub start_time: usize,
+}
+
 /// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
     /// Save task context
@@ -13,6 +20,9 @@ pub struct TaskControlBlock {
 
     /// Maintain the execution status of the current process
     pub task_status: TaskStatus,
+
+    /// Maintain the first execute time of the task
+    pub start_time: usize,
 
     /// Application address space
     pub memory_set: MemorySet,
@@ -57,6 +67,7 @@ impl TaskControlBlock {
         );
         let task_control_block = Self {
             task_status,
+            start_time: usize::MAX,
             task_cx: TaskContext::goto_trap_return(kernel_stack_top),
             memory_set,
             trap_cx_ppn,
