@@ -1,42 +1,29 @@
 //!Implementation of [`TaskManager`]
 use super::TaskControlBlock;
 use crate::sync::UPSafeCell;
-use alloc::vec::Vec;
-use alloc::collections::VecDeque;
+use alloc::collections::BinaryHeap;
 use alloc::sync::Arc;
 use lazy_static::*;
 ///A array of `TaskControlBlock` that is thread-safe
 pub struct TaskManager {
-    ready_priority_queue: Vec<VecDeque<Arc<TaskControlBlock>>>,
+    ready_priority_queue: BinaryHeap<Arc<TaskControlBlock>>,
 }
 
-/// A simple FIFO scheduler.
+/// A simple Heap scheduler.
 impl TaskManager {
     ///Creat an empty TaskManager
     pub fn new() -> Self {
         Self {
-            ready_priority_queue: Vec::new(),
+            ready_priority_queue: BinaryHeap::new(),
         }
     }
     /// Add process back to ready queue
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
-        let priority = task.inner_exclusive_access().priority;
-        assert!(crate::config::MIN_STRIDE_PRIORITY <= priority && priority <= crate::config::MAX_STRIDE_PRIORITY,
-                "priority should in range [MIN_STRIDE_PRIORITY, MAX_STRIDE_PRIORITY]");
-        let index = crate::config::MAX_STRIDE_PRIORITY - priority;
-        while self.ready_priority_queue.len() <= index {
-            self.ready_priority_queue.push(VecDeque::new());
-        }
-        self.ready_priority_queue[index].push_back(task);
+        self.ready_priority_queue.push(task);
     }
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        for it in self.ready_priority_queue.iter_mut().rev() {
-            if !it.is_empty() {
-                return it.pop_front();
-            }
-        }
-        None
+        self.ready_priority_queue.pop()
     }
 }
 

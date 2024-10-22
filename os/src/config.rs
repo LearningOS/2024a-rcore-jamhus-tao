@@ -24,7 +24,7 @@ pub const CLOCK_FREQ: usize = 12500000;
 /// the physical memory end
 pub const MEMORY_END: usize = 0x88000000;
 
-/// init & max priority for stride
-pub const MAX_STRIDE_PRIORITY: usize = 16;
+/// init priority for stride
+pub const INIT_STRIDE_PRIORITY: usize = 16;
 /// min priority for stride
 pub const MIN_STRIDE_PRIORITY: usize = 2;

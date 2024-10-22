@@ -24,6 +24,35 @@ pub struct TaskControlBlock {
     inner: UPSafeCell<TaskControlBlockInner>,
 }
 
+impl core::cmp::PartialEq for TaskControlBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner_exclusive_access().stride == other.inner_exclusive_access().stride
+    }
+}
+
+impl core::cmp::Eq for TaskControlBlock {}
+
+impl core::cmp::PartialOrd for TaskControlBlock {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        let s1 = self.inner_exclusive_access().stride;
+        let s2 = other.inner_exclusive_access().stride;
+        if s1 == s2 {
+            Some(core::cmp::Ordering::Equal)
+        } else if ((s1 as isize) < (s2 as isize)) ^
+                (core::cmp::max(s1, s2) - core::cmp::min(s1, s2) <= isize::MAX as usize) {
+            Some(core::cmp::Ordering::Less)
+        } else {
+            Some(core::cmp::Ordering::Greater)
+        }
+    }
+}
+
+impl core::cmp::Ord for TaskControlBlock {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
 impl TaskControlBlock {
     /// Get the mutable reference of the inner TCB
     pub fn inner_exclusive_access(&self) -> RefMut<'_, TaskControlBlockInner> {
@@ -53,8 +82,10 @@ pub struct TaskControlBlockInner {
     /// first time to execute, initialized with usize::MAX
     pub start_time: usize,
 
-    /// Stride priority
-    pub priority: usize,
+    /// Stride accumulated
+    pub stride: usize,
+    /// Stride append each run
+    pub priority: usize,  // <= isize::MAX
 
     /// Application address space
     pub memory_set: MemorySet,
@@ -119,7 +150,8 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
                     start_time: usize::MAX,
-                    priority: crate::config::MAX_STRIDE_PRIORITY,
+                    stride: 0,
+                    priority: crate::config::INIT_STRIDE_PRIORITY,
                     memory_set,
                     parent: None,
                     children: Vec::new(),
@@ -194,7 +226,8 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
                     start_time: usize::MAX,
-                    priority: crate::config::MAX_STRIDE_PRIORITY,
+                    stride: 0,
+                    priority: crate::config::INIT_STRIDE_PRIORITY,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
@@ -239,7 +272,8 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
                     start_time: usize::MAX,
-                    priority: crate::config::MAX_STRIDE_PRIORITY,
+                    stride: 0,
+                    priority: crate::config::INIT_STRIDE_PRIORITY,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),

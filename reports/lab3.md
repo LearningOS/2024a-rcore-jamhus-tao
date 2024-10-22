@@ -2,7 +2,7 @@
 Q: stride 算法原理非常简单，但是有一个比较大的问题。例如两个 pass = 10 的进程，使用 8bit 无符号整形储存 stride， p1.stride = 255, p2.stride = 250，在 p2 执行一个时间片后，理论上下一次应该 p1 执行？实际情况呢？为什么？
 A: 理论上下次应该 P2 执行，实际上之后一直都是 P1 执行。因为 P2 溢出后会一直比 P1 小。
 Q: 我们之前要求进程优先级 >= 2 其实就是为了解决这个问题。可以证明， 在不考虑溢出的情况下 , 在进程优先级全部 >= 2 的情况下，如果严格按照算法执行，那么 STRIDE_MAX – STRIDE_MIN <= BigStride / 2。为什么？尝试简单说明（不要求严格证明）？
-A: 通常 BigStride 要求是 Pass 最大值的两倍，例如现在的代码实现中 Pass 的值域为 [0, isize::MAX], BigStride 的值域为 [0, usize::MAX]。那么显然每次选最小的 STRIDE_MIN 加上 Pass 时最大小值的差不超过 Pass, 又有 Pass <= BigStride / 2。
+A: 通常 BigStride 要求是 Pass 最大值的两倍，例如现在的代码实现中 Pass 的值域为 [0, isize::MAX], BigStride 的值域为 [0, usize::MAX]。那么显然每次选最小的 STRIDE_MIN 加上 Pass 时最大小值的差不超过 Pass, 又有 Pass < BigStride / 2。
 Q: 已知以上结论，考虑溢出的情况下，可以为 Stride 设计特别的比较器，让 BinaryHeap<Stride> 的 pop 方法能返回真正最小的 Stride。补全下列代码中的 partial_cmp 函数，假设两个 Stride 永远不会相等。
 A: 详见代码。
 

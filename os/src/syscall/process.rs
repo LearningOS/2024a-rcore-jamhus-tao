@@ -234,7 +234,7 @@ pub fn sys_set_priority(_prio: isize) -> isize {
     if _prio < crate::config::MIN_STRIDE_PRIORITY as isize {
         -1
     } else {
-        let prio = core::cmp::min(_prio as usize, crate::config::MAX_STRIDE_PRIORITY);
+        let prio = _prio as usize;
         set_current_app_priority(prio);
         _prio
     }

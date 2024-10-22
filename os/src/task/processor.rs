@@ -65,6 +65,7 @@ pub fn run_tasks() {
             if task_inner.start_time == usize::MAX {
                 task_inner.start_time = crate::timer::get_time_ms();
             }
+            task_inner.stride += task_inner.priority;
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -116,10 +117,9 @@ pub fn current_app_munmap(start: VirtPageNum, end: VirtPageNum) -> isize {
 
 /// for set_priority syscall
 pub fn set_current_app_priority(priority: usize) {
+    assert!(priority <= isize::MAX as usize, "priority should be less than isize::MAX");
     let task = PROCESSOR.exclusive_access().current().unwrap();
     let mut task = task.inner_exclusive_access();
-    assert!(crate::config::MIN_STRIDE_PRIORITY <= priority && priority <= crate::config::MAX_STRIDE_PRIORITY,
-            "priority should in range [MIN_STRIDE_PRIORITY, MAX_STRIDE_PRIORITY]");
     task.priority = priority;
 }
 
