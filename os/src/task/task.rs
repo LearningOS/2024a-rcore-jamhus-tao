@@ -53,6 +53,9 @@ pub struct TaskControlBlockInner {
     /// first time to execute, initialized with usize::MAX
     pub start_time: usize,
 
+    /// Stride priority
+    pub priority: usize,
+
     /// Application address space
     pub memory_set: MemorySet,
 
@@ -116,6 +119,7 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
                     start_time: usize::MAX,
+                    priority: crate::config::MAX_STRIDE_PRIORITY,
                     memory_set,
                     parent: None,
                     children: Vec::new(),
@@ -190,6 +194,7 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
                     start_time: usize::MAX,
+                    priority: crate::config::MAX_STRIDE_PRIORITY,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
@@ -234,6 +239,7 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
                     start_time: usize::MAX,
+                    priority: crate::config::MAX_STRIDE_PRIORITY,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),

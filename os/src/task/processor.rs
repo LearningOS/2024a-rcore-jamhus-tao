@@ -114,6 +114,15 @@ pub fn current_app_munmap(start: VirtPageNum, end: VirtPageNum) -> isize {
     task.memory_set.munmap(start, end, pid)
 }
 
+/// for set_priority syscall
+pub fn set_current_app_priority(priority: usize) {
+    let task = PROCESSOR.exclusive_access().current().unwrap();
+    let mut task = task.inner_exclusive_access();
+    assert!(crate::config::MIN_STRIDE_PRIORITY <= priority && priority <= crate::config::MAX_STRIDE_PRIORITY,
+            "priority should in range [MIN_STRIDE_PRIORITY, MAX_STRIDE_PRIORITY]");
+    task.priority = priority;
+}
+
 /// Get the mutable reference to trap context of current task
 pub fn current_trap_cx() -> &'static mut TrapContext {
     current_task()

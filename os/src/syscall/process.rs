@@ -1,15 +1,7 @@
 //! Process management syscalls
 use alloc::sync::Arc;
-
-use crate::{
-    config::MAX_SYSCALL_NUM,
-    loader::get_app_data_by_name,
-    mm::{translated_byte_buffer, translated_refmut, translated_str},
-    task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
-    },
-};
+use crate::task::*;
+use crate::mm::*;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -24,7 +16,7 @@ pub struct TaskInfo {
     /// Task status in it's life cycle
     status: TaskStatus,
     /// The numbers of syscall called by task
-    syscall_times: [u32; MAX_SYSCALL_NUM],
+    syscall_times: [u32; crate::config::MAX_SYSCALL_NUM],
     /// Total running time of task
     time: usize,
 }
@@ -67,7 +59,7 @@ pub fn sys_exec(path: *const u8) -> isize {
     trace!("kernel:pid[{}] sys_exec", current_task().unwrap().pid.0);
     let token = current_user_token();
     let path = translated_str(token, path);
-    if let Some(data) = get_app_data_by_name(path.as_str()) {
+    if let Some(data) = crate::loader::get_app_data_by_name(path.as_str()) {
         let task = current_task().unwrap();
         task.exec(data);
         0
@@ -117,7 +109,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 fn copy_in_va<T>(data: T, addr: *mut T) -> isize {
   let size = core::mem::size_of::<T>();
   let data = &data as *const _ as *const u8;
-  let v = translated_byte_buffer(current_user_token(), addr as *const u8, size);
+  let v = crate::mm::translated_byte_buffer(current_user_token(), addr as *const u8, size);
   let mut i = 0;
   for buffer in v {
       for byte in buffer {
@@ -149,7 +141,6 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-use crate::syscall::STATISITC_SYSCALL_TIMES;
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
@@ -163,13 +154,12 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     let tcb = tcb.inner_exclusive_access();
     copy_in_va(TaskInfo {
         status: tcb.task_status,
-        syscall_times: STATISITC_SYSCALL_TIMES.exclusive_access()[&pid],
+        syscall_times: crate::syscall::STATISITC_SYSCALL_TIMES.exclusive_access()[pid],
         time: if tcb.start_time == usize::MAX { 0 } else { crate::timer::get_time_ms() - tcb.start_time },
     }, _ti);
-    -1
+    0
 }
 
-use crate::mm::*;
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!(
@@ -222,7 +212,7 @@ pub fn sys_spawn(_path: *const u8) -> isize {
     );
     let token = current_user_token();
     let path = translated_str(token, _path);
-    if let Some(data) = get_app_data_by_name(path.as_str()) {
+    if let Some(data) = crate::loader::get_app_data_by_name(path.as_str()) {
         let task = current_task().unwrap();
         let new_task = task.spawn(data);
         // different from fork, it need not diff return value
@@ -238,8 +228,14 @@ pub fn sys_spawn(_path: *const u8) -> isize {
 // YOUR JOB: Set task priority.
 pub fn sys_set_priority(_prio: isize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_set_priority",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio < crate::config::MIN_STRIDE_PRIORITY as isize {
+        -1
+    } else {
+        let prio = core::cmp::min(_prio as usize, crate::config::MAX_STRIDE_PRIORITY);
+        set_current_app_priority(prio);
+        _prio
+    }
 }

@@ -30,32 +30,29 @@ use fs::*;
 mod process;
 use process::*;
 
-use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use lazy_static::*;
 
 use crate::config::MAX_SYSCALL_NUM;
 lazy_static! {
     /// to statistic syscall times for each task
-    pub static ref STATISITC_SYSCALL_TIMES: UPSafeCell<BTreeMap<usize, [u32; MAX_SYSCALL_NUM]>> = unsafe { UPSafeCell::new(BTreeMap::new()) };
+    pub static ref STATISITC_SYSCALL_TIMES: UPSafeCell<Vec<[u32; MAX_SYSCALL_NUM]>> = unsafe { UPSafeCell::new(Vec::new()) };
 }
 
 use crate::sync::UPSafeCell;
 use crate::task::current_task;
+#[allow(unused)]
 fn record_syscall(syscall_id: usize) {
     let pid = current_task().unwrap().pid.0;
-    let mut inner = STATISITC_SYSCALL_TIMES.exclusive_access();
-    if let Some(value) = inner.get_mut(&pid) {
-        value[syscall_id] += 1;
-    } else {
-        let mut value = [0; MAX_SYSCALL_NUM];
-        value[syscall_id] = 1;
-        inner.insert(pid, value);
+    while STATISITC_SYSCALL_TIMES.exclusive_access().len() <= pid {
+        STATISITC_SYSCALL_TIMES.exclusive_access().push([0; MAX_SYSCALL_NUM]);
     }
+    STATISITC_SYSCALL_TIMES.exclusive_access()[pid][syscall_id] += 1;
 }
 
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
-    record_syscall(syscall_id);
+    // record_syscall(syscall_id);
     match syscall_id {
         SYSCALL_READ => sys_read(args[0], args[1] as *const u8, args[2]),
         SYSCALL_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),

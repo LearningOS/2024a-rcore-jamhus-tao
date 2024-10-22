@@ -304,57 +304,26 @@ impl MemorySet {
 
      /// for mmap syscall
     pub fn mmap(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission, _current_app_id: usize) -> isize {
-        debug!("{}: mmap start!", _current_app_id);
         for vpn in VPNRange::new(start_va.floor(), end_va.ceil()) {
-            debug!("vpn.0 {}", vpn.0);
             if let Some(pte) = self.page_table.find_pte(vpn) {
                 if pte.is_valid() {
-                    debug!("{}: mmap return -1", _current_app_id);
                     return -1;
                 }
             }
         }
-        debug!("========  ========");
-        for vpn in VPNRange::new((start_va.floor().0 - 1).into(), (end_va.ceil().0 + 1).into()) {
-            if let Some(pte) = self.page_table.find_pte(vpn) {
-                if pte.is_valid() {
-                    debug!("vpn.0 {} find", vpn.0);
-                } else {
-                    debug!("vpn.0 {} not find", vpn.0);
-                }
-            } else {
-                debug!("vpn.0 {} not find", vpn.0);
-            }
-        }
         self.insert_framed_area(start_va, end_va, permission);
-        debug!("========  ========");
-        for vpn in VPNRange::new((start_va.floor().0 - 1).into(), (end_va.ceil().0 + 1).into()) {
-            if let Some(pte) = self.page_table.find_pte(vpn) {
-                if pte.is_valid() {
-                    debug!("vpn.0 {} find", vpn.0);
-                } else {
-                    debug!("vpn.0 {} not find", vpn.0);
-                }
-            } else {
-                debug!("vpn.0 {} not find", vpn.0);
-            }
-        }
-        debug!("{}: mmap return 0", _current_app_id);
         0
     }
 
     /// for munmap syscall
     pub fn munmap(&mut self, start: VirtPageNum, end: VirtPageNum, _current_app_id: usize) -> isize {
-        debug!("{}: munmap start!", _current_app_id);
         if let Some(it) = self.areas.iter_mut().enumerate().find(|(_, area)| area.vpn_range.get_start() == start && area.vpn_range.get_end() == end) {
             it.1.unmap(&mut self.page_table);
             let i = it.0;
             drop(it);
             self.areas.remove(i);
-            debug!("{}: munmap return 0", _current_app_id);
             0
         } else {
-            debug!("{}: munmap return -1", _current_app_id);
             -1
         }
     }
