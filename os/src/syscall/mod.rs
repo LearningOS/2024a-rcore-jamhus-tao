@@ -84,3 +84,23 @@ pub fn syscall(syscall_id: usize, args: [usize; 4]) -> isize {
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }
+
+///
+pub fn copy_in_va<T>(data: T, addr: *mut T) -> isize {
+  let size = core::mem::size_of::<T>();
+  let data = &data as *const _ as *const u8;
+  let v = crate::mm::translated_byte_buffer(crate::task::current_user_token(), addr as *const u8, size);
+  let mut i = 0;
+  for buffer in v {
+      for byte in buffer {
+          if i == size {
+              break;
+          }
+          unsafe {
+              *byte = *data.add(i);
+              i += 1;
+          }
+      }
+  }
+  0
+}

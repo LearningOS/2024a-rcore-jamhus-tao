@@ -108,25 +108,6 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     // ---- release current PCB automatically
 }
 
-fn copy_in_va<T>(data: T, addr: *mut T) -> isize {
-  let size = core::mem::size_of::<T>();
-  let data = &data as *const _ as *const u8;
-  let v = crate::mm::translated_byte_buffer(current_user_token(), addr as *const u8, size);
-  let mut i = 0;
-  for buffer in v {
-      for byte in buffer {
-          if i == size {
-              break;
-          }
-          unsafe {
-              *byte = *data.add(i);
-              i += 1;
-          }
-      }
-  }
-  0
-}
-
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
@@ -136,7 +117,7 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         current_task().unwrap().pid.0
     );
     let us = crate::timer::get_time_us();
-    copy_in_va(TimeVal {
+    crate::syscall::copy_in_va(TimeVal {
         sec: us / 1_000_000,
         usec: us % 1_000_000,
     }, _ts);
@@ -154,7 +135,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
     let tcb = current_task().unwrap();
     let pid = tcb.pid.0;
     let tcb = tcb.inner_exclusive_access();
-    copy_in_va(TaskInfo {
+    crate::syscall::copy_in_va(TaskInfo {
         status: tcb.task_status,
         syscall_times: crate::syscall::STATISITC_SYSCALL_TIMES.exclusive_access()[pid],
         time: if tcb.start_time == usize::MAX { 0 } else { crate::timer::get_time_ms() - tcb.start_time },
