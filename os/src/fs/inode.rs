@@ -20,12 +20,14 @@ use lazy_static::*;
 pub struct OSInode {
     readable: bool,
     writable: bool,
-    inner: UPSafeCell<OSInodeInner>,
+    /// The OS inode inner in 'UPSafeCell'
+    pub inner: UPSafeCell<OSInodeInner>,
 }
 /// The OS inode inner in 'UPSafeCell'
 pub struct OSInodeInner {
     offset: usize,
-    inode: Arc<Inode>,
+    ///
+    pub inode: Arc<Inode>,
 }
 
 impl OSInode {
@@ -55,6 +57,7 @@ impl OSInode {
 }
 
 lazy_static! {
+    ///
     pub static ref ROOT_INODE: Arc<Inode> = {
         let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
         Arc::new(EasyFileSystem::root_inode(&efs))
@@ -155,4 +158,30 @@ impl File for OSInode {
         }
         total_write_size
     }
+    fn fstat(&self) -> super::Stat {
+        let ino = self.inner.exclusive_access().inode.inode_id() as u64;
+        let nlink = crate::fs::link_count(ino as u32);
+        super::Stat {
+            dev: 0,
+            ino,
+            mode: super::StatMode::FILE,
+            nlink,
+            pad: [0; 7],
+        }
+    }
+}
+
+/// link count
+pub fn link_count(inode_id: u32) -> u32 {
+    ROOT_INODE.link_count(inode_id)
+}
+
+/// linkat
+pub fn linkat(name: &str, indoe: Arc<Inode>) {
+    ROOT_INODE.linkat(name, &indoe);
+}
+
+/// unlinkat
+pub fn unlinkat(name: &str) {
+    ROOT_INODE.unlinkat(name);
 }
