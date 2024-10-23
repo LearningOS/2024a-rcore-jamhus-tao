@@ -26,6 +26,35 @@ pub struct TaskControlBlock {
     inner: UPSafeCell<TaskControlBlockInner>,
 }
 
+impl core::cmp::PartialEq for TaskControlBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner_exclusive_access().stride == other.inner_exclusive_access().stride
+    }
+}
+
+impl core::cmp::Eq for TaskControlBlock {}
+
+impl core::cmp::PartialOrd for TaskControlBlock {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        let s1 = self.inner_exclusive_access().stride;
+        let s2 = other.inner_exclusive_access().stride;
+        if s1 == s2 {
+            Some(core::cmp::Ordering::Equal)
+        } else if ((s1 as isize) < (s2 as isize)) ^
+                (core::cmp::max(s1, s2) - core::cmp::min(s1, s2) <= isize::MAX as usize) {
+            Some(core::cmp::Ordering::Less)
+        } else {
+            Some(core::cmp::Ordering::Greater)
+        }
+    }
+}
+
+impl core::cmp::Ord for TaskControlBlock {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
 impl TaskControlBlock {
     /// Get the mutable reference of the inner TCB
     pub fn inner_exclusive_access(&self) -> RefMut<'_, TaskControlBlockInner> {
@@ -52,6 +81,14 @@ pub struct TaskControlBlockInner {
     /// Maintain the execution status of the current process
     pub task_status: TaskStatus,
 
+    /// first time to execute, initialized with usize::MAX
+    pub start_time: usize,
+
+    /// Stride accumulated
+    pub stride: usize,
+    /// Stride append each run
+    pub priority: usize,  // <= isize::MAX
+
     /// Application address space
     pub memory_set: MemorySet,
 
@@ -74,9 +111,11 @@ pub struct TaskControlBlockInner {
 }
 
 impl TaskControlBlockInner {
+    /// get the trap context
     pub fn get_trap_cx(&self) -> &'static mut TrapContext {
         self.trap_cx_ppn.get_mut()
     }
+    /// get the user token
     pub fn get_user_token(&self) -> usize {
         self.memory_set.token()
     }
@@ -121,6 +160,9 @@ impl TaskControlBlock {
                     base_size: user_sp,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
+                    start_time: usize::MAX,
+                    stride: 0,
+                    priority: crate::config::INIT_STRIDE_PRIORITY,
                     memory_set,
                     parent: None,
                     children: Vec::new(),
@@ -209,6 +251,9 @@ impl TaskControlBlock {
                     base_size: parent_inner.base_size,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
+                    start_time: usize::MAX,
+                    stride: 0,
+                    priority: crate::config::INIT_STRIDE_PRIORITY,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
@@ -229,6 +274,16 @@ impl TaskControlBlock {
         task_control_block
         // **** release child PCB
         // ---- release parent PCB
+    }
+
+    /// spawn = exec + fork, but more light
+    pub fn spawn(self: &Arc<Self>, elf_data: &[u8]) -> Arc<Self> {
+        let task_control_block = Arc::new(Self::new(elf_data));
+        // add child
+        self.inner_exclusive_access().children.push(task_control_block.clone());
+        task_control_block.inner_exclusive_access().parent = Some(Arc::downgrade(self));
+        // return
+        task_control_block
     }
 
     /// get pid of process

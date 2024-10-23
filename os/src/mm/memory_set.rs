@@ -318,6 +318,32 @@ impl MemorySet {
             false
         }
     }
+
+     /// for mmap syscall
+    pub fn mmap(&mut self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission, _current_app_id: usize) -> isize {
+        for vpn in VPNRange::new(start_va.floor(), end_va.ceil()) {
+            if let Some(pte) = self.page_table.find_pte(vpn) {
+                if pte.is_valid() {
+                    return -1;
+                }
+            }
+        }
+        self.insert_framed_area(start_va, end_va, permission);
+        0
+    }
+
+    /// for munmap syscall
+    pub fn munmap(&mut self, start: VirtPageNum, end: VirtPageNum, _current_app_id: usize) -> isize {
+        if let Some(it) = self.areas.iter_mut().enumerate().find(|(_, area)| area.vpn_range.get_start() == start && area.vpn_range.get_end() == end) {
+            it.1.unmap(&mut self.page_table);
+            let i = it.0;
+            drop(it);
+            self.areas.remove(i);
+            0
+        } else {
+            -1
+        }
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {

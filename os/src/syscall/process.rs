@@ -1,16 +1,8 @@
 //! Process management syscalls
 //!
 use alloc::sync::Arc;
-
-use crate::{
-    config::MAX_SYSCALL_NUM,
-    fs::{open_file, OpenFlags},
-    mm::{translated_refmut, translated_str},
-    task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
-    },
-};
+use crate::task::*;
+use crate::mm::*;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -25,7 +17,7 @@ pub struct TaskInfo {
     /// Task status in it's life cycle
     status: TaskStatus,
     /// The numbers of syscall called by task
-    syscall_times: [u32; MAX_SYSCALL_NUM],
+    syscall_times: [u32; crate::config::MAX_SYSCALL_NUM],
     /// Total running time of task
     time: usize,
 }
@@ -63,6 +55,8 @@ pub fn sys_fork() -> isize {
 }
 
 pub fn sys_exec(path: *const u8) -> isize {
+    use crate::fs::{open_file, OpenFlags};
+
     trace!("kernel:pid[{}] sys_exec", current_task().unwrap().pid.0);
     let token = current_user_token();
     let path = translated_str(token, path);
@@ -114,15 +108,39 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     // ---- release current PCB automatically
 }
 
+fn copy_in_va<T>(data: T, addr: *mut T) -> isize {
+  let size = core::mem::size_of::<T>();
+  let data = &data as *const _ as *const u8;
+  let v = crate::mm::translated_byte_buffer(current_user_token(), addr as *const u8, size);
+  let mut i = 0;
+  for buffer in v {
+      for byte in buffer {
+          if i == size {
+              break;
+          }
+          unsafe {
+              *byte = *data.add(i);
+              i += 1;
+          }
+      }
+  }
+  0
+}
+
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_get_time",
         current_task().unwrap().pid.0
     );
-    -1
+    let us = crate::timer::get_time_us();
+    copy_in_va(TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    }, _ts);
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
@@ -133,25 +151,48 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let tcb = current_task().unwrap();
+    let pid = tcb.pid.0;
+    let tcb = tcb.inner_exclusive_access();
+    copy_in_va(TaskInfo {
+        status: tcb.task_status,
+        syscall_times: crate::syscall::STATISITC_SYSCALL_TIMES.exclusive_access()[pid],
+        time: if tcb.start_time == usize::MAX { 0 } else { crate::timer::get_time_ms() - tcb.start_time },
+    }, _ti);
+    0
 }
 
-/// YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+ /// YOUR JOB: Implement mmap.
+ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_mmap",
         current_task().unwrap().pid.0
     );
-    -1
+    // _port: 0xwr
+    // perm: 0uxwr0
+    if _port & !0x7 != 0 {
+        -1
+    } else if _port & 0x7 == 0 {
+        -1
+    } else if _start & crate::config::PAGE_SIZE - 1 != 0 {
+        -1
+    } else {
+        let perm = MapPermission::from_bits((_port << 1) as u8).unwrap() | MapPermission::U;
+        current_app_mmap(_start.into(), (_start + _len).into(), perm)
+    }
 }
 
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_munmap",
         current_task().unwrap().pid.0
     );
-    -1
+    if _start & crate::config::PAGE_SIZE - 1 != 0 {
+        -1
+    } else {
+        current_app_munmap(VirtAddr(_start).floor(), VirtAddr(_start + _len).ceil())
+    }
 }
 
 /// change data segment size
@@ -167,18 +208,39 @@ pub fn sys_sbrk(size: i32) -> isize {
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
+    use crate::fs::{open_file, OpenFlags};
+
     trace!(
-        "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_spawn",
         current_task().unwrap().pid.0
     );
-    -1
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+    if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
+        let all_data = app_inode.read_all();
+        let task = current_task().unwrap();
+        let new_task = task.spawn(all_data.as_slice());
+        // different from fork, it need not diff return value
+        // add new task to scheduler
+        let new_pid = new_task.pid.0;
+        add_task(new_task);
+        new_pid as isize
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Set task priority.
 pub fn sys_set_priority(_prio: isize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_set_priority",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio < crate::config::MIN_STRIDE_PRIORITY as isize {
+        -1
+    } else {
+        let prio = _prio as usize;
+        set_current_app_priority(prio);
+        _prio
+    }
 }

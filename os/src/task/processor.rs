@@ -47,6 +47,7 @@ impl Processor {
 }
 
 lazy_static! {
+    /// the only CPU
     pub static ref PROCESSOR: UPSafeCell<Processor> = unsafe { UPSafeCell::new(Processor::new()) };
 }
 
@@ -61,6 +62,10 @@ pub fn run_tasks() {
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
+            if task_inner.start_time == usize::MAX {
+                task_inner.start_time = crate::timer::get_time_ms();
+            }
+            task_inner.stride += task_inner.priority;
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -92,7 +97,33 @@ pub fn current_user_token() -> usize {
     task.get_user_token()
 }
 
-///Get the mutable reference to trap context of current task
+use crate::mm::*;
+
+/// for mmap syscall
+pub fn current_app_mmap(start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) -> isize {
+    let task = PROCESSOR.exclusive_access().current().unwrap();
+    let pid = task.getpid();
+    let mut task = task.inner_exclusive_access();
+    task.memory_set.mmap(start_va, end_va, permission, pid)
+}
+
+/// for munmap syscall
+pub fn current_app_munmap(start: VirtPageNum, end: VirtPageNum) -> isize {
+    let task = PROCESSOR.exclusive_access().current().unwrap();
+    let pid = task.getpid();
+    let mut task = task.inner_exclusive_access();
+    task.memory_set.munmap(start, end, pid)
+}
+
+/// for set_priority syscall
+pub fn set_current_app_priority(priority: usize) {
+    assert!(priority <= isize::MAX as usize, "priority should be less than isize::MAX");
+    let task = PROCESSOR.exclusive_access().current().unwrap();
+    let mut task = task.inner_exclusive_access();
+    task.priority = priority;
+}
+
+/// Get the mutable reference to trap context of current task
 pub fn current_trap_cx() -> &'static mut TrapContext {
     current_task()
         .unwrap()
