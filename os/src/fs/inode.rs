@@ -177,8 +177,8 @@ pub fn link_count(inode_id: u32) -> u32 {
 }
 
 /// linkat
-pub fn linkat(name: &str, indoe: Arc<Inode>) {
-    ROOT_INODE.linkat(name, &indoe);
+pub fn linkat(name: &str, inode: Arc<Inode>) {
+    ROOT_INODE.linkat(name, &inode);
 }
 
 /// unlinkat
