@@ -10,96 +10,48 @@
 //! `sys_` then the name of the syscall. You can find functions like this in
 //! submodules, and you should also implement syscalls this way.
 
-/// openat syscall
-pub const SYSCALL_OPENAT: usize = 56;
-/// close syscall
-pub const SYSCALL_CLOSE: usize = 57;
-/// read syscall
-pub const SYSCALL_READ: usize = 63;
-/// write syscall
-pub const SYSCALL_WRITE: usize = 64;
-/// unlinkat syscall
-pub const SYSCALL_UNLINKAT: usize = 35;
-/// linkat syscall
-pub const SYSCALL_LINKAT: usize = 37;
-/// fstat syscall
-pub const SYSCALL_FSTAT: usize = 80;
-/// exit syscall
-pub const SYSCALL_EXIT: usize = 93;
-/// sleep syscall
-pub const SYSCALL_SLEEP: usize = 101;
-/// yield syscall
-pub const SYSCALL_YIELD: usize = 124;
-/// kill syscall
-pub const SYSCALL_KILL: usize = 129;
-/*
-/// sigaction syscall
-pub const SYSCALL_SIGACTION: usize = 134;
-/// sigprocmask syscall
-pub const SYSCALL_SIGPROCMASK: usize = 135;
-/// sigreturn syscall
-pub const SYSCALL_SIGRETURN: usize = 139;
-*/
-/// gettimeofday syscall
-pub const SYSCALL_GETTIMEOFDAY: usize = 169;
-/// getpid syscall
-pub const SYSCALL_GETPID: usize = 172;
-/// gettid syscall
-pub const SYSCALL_GETTID: usize = 178;
-/// fork syscall
-pub const SYSCALL_FORK: usize = 220;
-/// exec syscall
-pub const SYSCALL_EXEC: usize = 221;
-/// waitpid syscall
-pub const SYSCALL_WAITPID: usize = 260;
-/// set priority syscall
-pub const SYSCALL_SET_PRIORITY: usize = 140;
-/*
-/// sbrk syscall
-pub const SYSCALL_SBRK: usize = 214;
-*/
-/// munmap syscall
-pub const SYSCALL_MUNMAP: usize = 215;
-/// mmap syscall
-pub const SYSCALL_MMAP: usize = 222;
-/// spawn syscall
-pub const SYSCALL_SPAWN: usize = 400;
-/*
-/// mail read syscall
-pub const SYSCALL_MAIL_READ: usize = 401;
-/// mail write syscall
-pub const SYSCALL_MAIL_WRITE: usize = 402;
-*/
-/// dup syscall
-pub const SYSCALL_DUP: usize = 24;
-/// pipe syscall
-pub const SYSCALL_PIPE: usize = 59;
-/// task info syscall
-pub const SYSCALL_TASK_INFO: usize = 410;
-/// thread_create syscall
-pub const SYSCALL_THREAD_CREATE: usize = 460;
-/// waittid syscall
-pub const SYSCALL_WAITTID: usize = 462;
-/// mutex_create syscall
-pub const SYSCALL_MUTEX_CREATE: usize = 463;
-/// mutex_lock syscall
-pub const SYSCALL_MUTEX_LOCK: usize = 464;
-/// mutex_unlock syscall
-pub const SYSCALL_MUTEX_UNLOCK: usize = 466;
-/// semaphore_create syscall
-pub const SYSCALL_SEMAPHORE_CREATE: usize = 467;
-/// semaphore_up syscall
-pub const SYSCALL_SEMAPHORE_UP: usize = 468;
-/// enable deadlock detect syscall
-pub const SYSCALL_ENABLE_DEADLOCK_DETECT: usize = 469;
-/// semaphore_down syscall
-pub const SYSCALL_SEMAPHORE_DOWN: usize = 470;
-/// condvar_create syscall
-pub const SYSCALL_CONDVAR_CREATE: usize = 471;
-/// condvar_signal syscall
-pub const SYSCALL_CONDVAR_SIGNAL: usize = 472;
-/// condvar_wait syscallca
-pub const SYSCALL_CONDVAR_WAIT: usize = 473;
+const SYSCALL_OPENAT: usize = 56;
+const SYSCALL_CLOSE: usize = 57;
+const SYSCALL_READ: usize = 63;
+const SYSCALL_WRITE: usize = 64;
+const SYSCALL_UNLINKAT: usize = 35;
+const SYSCALL_LINKAT: usize = 37;
+const SYSCALL_FSTAT: usize = 80;
+const SYSCALL_EXIT: usize = 93;
+const SYSCALL_SLEEP: usize = 101;
+const SYSCALL_YIELD: usize = 124;
+const SYSCALL_KILL: usize = 129;
+// const SYSCALL_SIGACTION: usize = 134;
+// const SYSCALL_SIGPROCMASK: usize = 135;
+// const SYSCALL_SIGRETURN: usize = 139;
+const SYSCALL_GETTIMEOFDAY: usize = 169;
+const SYSCALL_GETPID: usize = 172;
+const SYSCALL_GETTID: usize = 178;
+const SYSCALL_FORK: usize = 220;
+const SYSCALL_EXEC: usize = 221;
+const SYSCALL_WAITPID: usize = 260;
+const SYSCALL_SET_PRIORITY: usize = 140;
+// const SYSCALL_SBRK: usize = 214;
+const SYSCALL_MUNMAP: usize = 215;
+const SYSCALL_MMAP: usize = 222;
+const SYSCALL_SPAWN: usize = 400;
+// const SYSCALL_MAIL_READ: usize = 401;
+// const SYSCALL_MAIL_WRITE: usize = 402;
+const SYSCALL_DUP: usize = 24;
+const SYSCALL_PIPE: usize = 59;
+const SYSCALL_TASK_INFO: usize = 410;
+const SYSCALL_THREAD_CREATE: usize = 460;
+const SYSCALL_WAITTID: usize = 462;
+const SYSCALL_MUTEX_CREATE: usize = 463;
+const SYSCALL_MUTEX_LOCK: usize = 464;
+const SYSCALL_MUTEX_UNLOCK: usize = 466;
+const SYSCALL_SEMAPHORE_CREATE: usize = 467;
+const SYSCALL_SEMAPHORE_UP: usize = 468;
+const SYSCALL_ENABLE_DEADLOCK_DETECT: usize = 469;
+const SYSCALL_SEMAPHORE_DOWN: usize = 470;
+const SYSCALL_CONDVAR_CREATE: usize = 471;
+const SYSCALL_CONDVAR_SIGNAL: usize = 472;
+const SYSCALL_CONDVAR_WAIT: usize = 473;
 
 mod fs;
 mod process;
@@ -154,4 +106,24 @@ pub fn syscall(syscall_id: usize, args: [usize; 4]) -> isize {
         SYSCALL_KILL => sys_kill(args[0], args[1] as u32),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
+}
+
+///
+pub fn copy_in_va<T>(data: T, addr: *mut T) -> isize {
+  let size = core::mem::size_of::<T>();
+  let data = &data as *const _ as *const u8;
+  let v = crate::mm::translated_byte_buffer(crate::task::current_user_token(), addr as *const u8, size);
+  let mut i = 0;
+  for buffer in v {
+      for byte in buffer {
+          if i == size {
+              break;
+          }
+          unsafe {
+              *byte = *data.add(i);
+              i += 1;
+          }
+      }
+  }
+  0
 }

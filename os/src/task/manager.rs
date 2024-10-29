@@ -11,7 +11,7 @@ use lazy_static::*;
 ///A array of `TaskControlBlock` that is thread-safe
 pub struct TaskManager {
     ready_queue: VecDeque<Arc<TaskControlBlock>>,
-    
+
     /// The stopping task, leave a reference so that the kernel stack will not be recycled when switching tasks
     stop_task: Option<Arc<TaskControlBlock>>,
 }
@@ -33,6 +33,7 @@ impl TaskManager {
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
         self.ready_queue.pop_front()
     }
+    /// remove
     pub fn remove(&mut self, task: Arc<TaskControlBlock>) {
         if let Some((id, _)) = self
             .ready_queue

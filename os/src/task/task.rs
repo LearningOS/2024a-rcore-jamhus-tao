@@ -31,6 +31,7 @@ impl TaskControlBlock {
 }
 
 pub struct TaskControlBlockInner {
+    /// User Resource for a task
     pub res: Option<TaskUserRes>,
     /// The physical page number of the frame where the trap context is placed
     pub trap_cx_ppn: PhysPageNum,

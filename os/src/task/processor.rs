@@ -89,6 +89,11 @@ pub fn current_process() -> Arc<ProcessControlBlock> {
     current_task().unwrap().process.upgrade().unwrap()
 }
 
+/// Whether current process enable deadlock detect
+pub fn current_enable_deadlock_detect() -> bool {
+    current_process().inner_exclusive_access().enable_deadlock_detect
+}
+
 /// Get the current user token(addr of page table)
 pub fn current_user_token() -> usize {
     let task = current_task().unwrap();

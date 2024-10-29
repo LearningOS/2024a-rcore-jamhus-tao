@@ -126,6 +126,12 @@ impl KernelStack {
     }
 }
 
+enum WaitingResource {
+    Mutex { mutex_id: usize },
+    Semaphore { sem_id: usize },
+    None,
+}
+
 /// User Resource for a task
 pub struct TaskUserRes {
     /// task id
@@ -134,6 +140,9 @@ pub struct TaskUserRes {
     pub ustack_base: usize,
     /// process belongs to
     pub process: Weak<ProcessControlBlock>,
+    /// to detect deadlock
+    lock_resource: (Vec<bool>/*for mutex*/, Vec<usize>/*for sem*/),
+    waiting_resource: WaitingResource,
 }
 /// Return the bottom addr (low addr) of the trap context for a task
 fn trap_cx_bottom_from_tid(tid: usize) -> usize {
@@ -156,6 +165,8 @@ impl TaskUserRes {
             tid,
             ustack_base,
             process: Arc::downgrade(&process),
+            lock_resource: (Vec::new(), Vec::new()),
+            waiting_resource: WaitingResource::None, 
         };
         if alloc_user_res {
             task_user_res.alloc_user_res();
@@ -216,6 +227,197 @@ impl TaskUserRes {
         let mut process_inner = process.inner_exclusive_access();
         process_inner.dealloc_tid(self.tid);
     }
+
+    /// detect deadlock
+    pub fn detect_deadlock() -> bool {
+        trace!("kernal:  TaskUserRes::detect_deadlock");
+        let mut available = false;
+        let process = crate::task::current_process();
+        let process = process.inner_exclusive_access();
+        let mut pass_main_thread = false;
+        for task in &process.tasks {
+            if let Some(task) = task.clone() {
+                if !pass_main_thread {
+                    pass_main_thread = true;
+                    continue;
+                }
+                let task = task.inner_exclusive_access();
+                if let Some(res) = task.res.as_ref() {
+                    match res.waiting_resource {
+                        WaitingResource::Mutex { mutex_id } => {
+                            assert!(process.mutex_list.len() > mutex_id, "mutex resource NOT FOUND in process container");
+                            if let Some((_, res)) = process.mutex_list[mutex_id].as_ref() {
+                                available = *res
+                            } else {
+                                panic!("mutex resource NOT FOUND in process container");
+                            }
+                        },
+                        WaitingResource::Semaphore { sem_id } => {
+                            assert!(process.semaphore_list.len() > sem_id, "semaphore resource NOT FOUND in process container");
+                            if let Some((_, res)) = process.semaphore_list[sem_id].as_ref() {
+                                available = *res > 0
+                            } else {
+                                panic!("semaphore resource NOT FOUND in process container");
+                            }
+                        },
+                        _ => available = true,
+                    }
+                }
+                if available {
+                    break;
+                }
+            }
+        }
+        available
+    }
+    /// wait mutex resource
+    pub fn wait_mutex_resource(&mut self, mutex_id: usize) {
+        trace!("kernal:  TaskUserRes::wait_mutex_resource");
+        match self.waiting_resource {
+            WaitingResource::None => self.waiting_resource = WaitingResource::Mutex { mutex_id },
+            _ => panic!("Please clear waiting resource first"),
+        }
+    }
+    /// wait semaphore resource
+    pub fn wait_semaphore_resource(&mut self, sem_id: usize) {
+        trace!("kernal:  TaskUserRes::wait_semaphore_resource");
+        match self.waiting_resource {
+            WaitingResource::None => self.waiting_resource = WaitingResource::Semaphore { sem_id },
+            _ => panic!("Please clear waiting resource first"),
+        }
+    }
+    /// clear waiting resource
+    pub fn clear_waiting_resource(&mut self) {
+        trace!("kernal:  TaskUserRes::clear_waiting_resource");
+        self.waiting_resource = WaitingResource::None;
+    }
+
+    /// occupy mutex resource from process container
+    pub fn occupy_mutex_resource(&mut self, mutex_id: usize) -> bool {
+        trace!("kernal:  TaskUserRes::occupy_mutex_resource {{ mutex_id: {} }}", mutex_id);
+        self.clear_waiting_resource();
+
+        let process = self.process.upgrade().unwrap();
+        let mut inner = process.inner_exclusive_access();
+        assert!(inner.mutex_list.len() > mutex_id, "mutex resource NOT FOUND in process container");
+        if let Some((_, res)) = inner.mutex_list[mutex_id].as_mut() {
+            if *res {
+                *res = false;
+                while self.lock_resource.0.len() <= mutex_id {
+                    self.lock_resource.0.push(false);
+                }
+                self.lock_resource.0[mutex_id] = true;
+                true
+            } else {
+                false
+            }
+        } else {
+            panic!("mutex resource NOT FOUND in process container");
+        }
+    }
+    /// release mutex resource to process container
+    pub fn release_mutex_resource(&mut self, mutex_id: usize) {
+        trace!("kernal:  TaskUserRes::release_mutex_resource {{ mutex_id: {} }}", mutex_id);
+        self.clear_waiting_resource();
+
+        let process = self.process.upgrade().unwrap();
+        let mut inner = process.inner_exclusive_access();
+        assert!(inner.mutex_list.len() > mutex_id, "mutex resource NOT FOUND in process container");
+        assert!(self.lock_resource.0.len() > mutex_id, "release mutex resource before occupied");
+        // while self.lock_resource.0.len() <= mutex_id {
+        //     self.lock_resource.0.push(false);
+        // }
+        if let Some((_, res)) = inner.mutex_list[mutex_id].as_mut() {
+            if self.lock_resource.0[mutex_id] {
+                *res = true;
+                self.lock_resource.0[mutex_id] = false;
+            }
+        } else {
+            panic!("mutex resource NOT FOUND in process container");
+        }
+    }
+
+    /// occupy semaphore resource in process container
+    pub fn occupy_semaphore_resource(&mut self, sem_id: usize) -> bool {
+        trace!("kernal:  TaskUserRes::occupy_semaphore_resource {{ sem_id: {} }}", sem_id);
+        self.clear_waiting_resource();
+
+        let process = self.process.upgrade().unwrap();
+        let mut inner = process.inner_exclusive_access();
+        assert!(inner.semaphore_list.len() > sem_id, "semaphore resource NOT FOUND in process container");
+        if let Some((_, res)) = inner.semaphore_list[sem_id].as_mut() {
+            if *res > 0 {
+                *res -= 1;
+                while self.lock_resource.1.len() <= sem_id {
+                    self.lock_resource.1.push(0);
+                }
+                self.lock_resource.1[sem_id] += 1;
+                true
+            } else {
+                false
+            }
+        } else {
+            panic!("semaphore resource NOT FOUND in process container");
+        }
+    }
+    /// release semaphore resource in process container
+    pub fn release_semaphore_resource(&mut self, sem_id: usize) {
+        trace!("kernal:  TaskUserRes::release_semaphore_resource {{ sem_id: {} }}", sem_id);
+        self.clear_waiting_resource();
+
+        let process = self.process.upgrade().unwrap();
+        let mut inner = process.inner_exclusive_access();
+        assert!(inner.semaphore_list.len() > sem_id, "semaphore resource NOT FOUND in process container");
+        assert!(self.lock_resource.1.len() > sem_id, "release semaphore before occupied");
+        // while self.lock_resource.1.len() <= sem_id {
+        //     self.lock_resource.1.push(0);
+        // }
+        if let Some((_, res)) = inner.semaphore_list[sem_id].as_mut() {
+            if self.lock_resource.1[sem_id] > 0 {
+                *res += 1;
+                self.lock_resource.1[sem_id] -= 1;
+            }
+        } else {
+            panic!("semaphore resource NOT FOUND in process container");
+        }
+    }
+
+    // /// block all lock resource, invoke when goto BLOCK status
+    // pub fn block_all_lock_resource(&mut self) {
+    //     trace!("kernal:  TaskUserRes::block_all_lock_resource");
+    //     todo!();
+    // }
+    /// drop all lock resource, invoke when goto non-BLOCK status
+    pub fn drop_all_lock_resource(&mut self) {
+        trace!("kernal:  TaskUserRes::drop_all_lock_resource");
+        self.clear_waiting_resource();
+
+        let process = self.process.upgrade().unwrap();
+        let mut inner = process.inner_exclusive_access();
+        assert!(self.lock_resource.0.len() <= inner.mutex_list.len(), "It's weird!");
+        assert!(self.lock_resource.1.len() <= inner.semaphore_list.len(), "It's weird!");
+    
+        let mut it = self.lock_resource.0.iter();
+        let mut container_it = inner.mutex_list.iter_mut();
+        while let Some(res) = it.next() {
+            if let Some(Some((_, container_res))) = container_it.next() {
+                // the outer `Some` must be met
+                // if the inner `Some` does't met, continue both `it` && `container_it`
+                *container_res ^= *res;  // boolean addition
+            }
+        }
+        self.lock_resource.0.clear();
+    
+        let mut it = self.lock_resource.1.iter();
+        let mut container_it = inner.semaphore_list.iter_mut();
+        while let Some(res) = it.next() {
+            if let Some(Some((_, container_res))) = container_it.next() {
+                *container_res += *res;
+            }
+        }
+        self.lock_resource.1.clear();
+    }
+
     /// The bottom usr vaddr (low addr) of the trap context for a task with tid
     pub fn trap_cx_user_va(&self) -> usize {
         trap_cx_bottom_from_tid(self.tid)
@@ -245,5 +447,6 @@ impl Drop for TaskUserRes {
     fn drop(&mut self) {
         self.dealloc_tid();
         self.dealloc_user_res();
+        self.drop_all_lock_resource();
     }
 }
